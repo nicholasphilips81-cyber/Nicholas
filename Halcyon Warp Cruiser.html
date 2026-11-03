@@ -1,0 +1,555 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Halcyon Warp Cruiser</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: full-bleed 3D stage, a single HUD layer above it. Identity top-left, controls bottom, readouts inline.
+     Deliberately one dark look: this is a view out into deep space. */
+  :root {
+    --bg: #04060c;
+    --panel: rgba(8, 13, 24, 0.74);
+    --fg: #dce7f6;
+    --muted: #8193ad;
+    --line: rgba(130, 170, 220, 0.22);
+    --warp: #5ad6ff;      /* contraction, bubble, nacelle glow */
+    --warp-2: #a58bff;    /* expansion */
+    --warp-ink: #021018;
+    --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.45;
+    overflow: hidden;
+  }
+  #stage { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+  #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .hud {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: space-between; gap: 12px;
+    padding-block: 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    pointer-events: none;
+  }
+  .hud > * { pointer-events: auto; }
+
+  .id { pointer-events: none; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+  .name {
+    font-family: var(--display); font-weight: 600; font-size: clamp(34px, 7vw, 56px);
+    line-height: 0.95; letter-spacing: 0.02em; text-transform: uppercase; margin: 4px 0 0;
+    text-wrap: balance;
+  }
+  .sub { color: var(--muted); margin: 6px 0 0; max-width: 34ch; }
+
+  .panel {
+    width: min(100%, 360px);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .engage {
+    appearance: none; border: 1px solid var(--warp); background: transparent; color: var(--warp);
+    font-family: var(--display); font-weight: 600; font-size: 20px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 10px 14px; cursor: pointer; transition: background .2s, color .2s, box-shadow .2s;
+  }
+  .engage:hover { background: rgba(90, 214, 255, 0.12); }
+  .engage[aria-pressed="true"] { background: var(--warp); color: var(--warp-ink); box-shadow: 0 0 24px rgba(90, 214, 255, 0.45); }
+  :focus-visible { outline: 2px solid var(--warp); outline-offset: 2px; }
+
+  .row { display: flex; flex-direction: column; gap: 6px; }
+  .rowhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .lab { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .val { font-variant-numeric: tabular-nums; color: var(--fg); text-align: right; }
+  .val b { font-weight: 500; color: var(--warp); }
+  input[type="range"] { width: 100%; accent-color: var(--warp); margin: 0; }
+
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  .toggles label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  input[type="checkbox"] { accent-color: var(--warp); margin: 0; width: 14px; height: 14px; }
+
+  .views { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .views button {
+    appearance: none; background: transparent; color: var(--fg); border: 1px solid var(--line);
+    font: inherit; font-size: 12px; padding: 6px 4px; cursor: pointer;
+  }
+  .views button:hover { border-color: var(--warp); color: var(--warp); }
+
+  .status { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--warp); box-shadow: 0 0 10px var(--warp); }
+  .hint { color: var(--muted); font-size: 11px; margin: 0; }
+
+  .lbl {
+    position: absolute; left: 0; top: 0; pointer-events: none; opacity: 0;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+    padding: 3px 7px; background: rgba(4, 6, 12, 0.7); border: 1px solid currentColor;
+    transform: translate(-50%, -50%);
+  }
+  #lblA { color: var(--warp); }
+  #lblB { color: var(--warp-2); }
+  #fail {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center;
+    padding: 24px; color: var(--muted);
+  }
+
+  @media (max-width: 560px) {
+    .panel { width: 100%; padding: 12px; gap: 12px; }
+    .sub { display: none; }
+  }
+</style>
+
+<main id="stage">
+  <canvas id="c" aria-label="Interactive 3D model of the Halcyon warp cruiser"></canvas>
+  <div class="lbl" id="lblA">Space contracts</div>
+  <div class="lbl" id="lblB">Space expands</div>
+  <div id="fail">This model needs WebGL, which this browser or device is not providing.</div>
+
+  <div class="hud">
+    <header class="id">
+      <div class="eyebrow">Survey cruiser · warp-capable</div>
+      <h1 class="name">ISV Halcyon</h1>
+      <p class="sub">Alcubierre-type bubble: space contracts ahead of the hull and expands behind it.</p>
+    </header>
+
+    <section class="panel" aria-label="Ship controls">
+      <button class="engage" id="engage" aria-pressed="false">Engage warp</button>
+
+      <div class="row">
+        <div class="rowhead">
+          <label class="lab" for="wf">Warp factor</label>
+          <span class="val" id="readout"><b>Warp 6.0</b> · 392 c</span>
+        </div>
+        <input type="range" id="wf" min="1" max="9.9" step="0.1" value="6">
+      </div>
+
+      <div class="status" aria-live="polite"><span class="dot" id="dot"></span><span id="status">Impulse power</span></div>
+
+      <div class="toggles">
+        <label><input type="checkbox" id="tBubble" checked> Bubble</label>
+        <label><input type="checkbox" id="tGrid" checked> Spacetime grid</label>
+        <label><input type="checkbox" id="tOrbit" checked> Auto-orbit</label>
+      </div>
+
+      <div class="views" role="group" aria-label="Camera views">
+        <button data-view="angle">Angle</button>
+        <button data-view="side">Side</button>
+        <button data-view="top">Top</button>
+        <button data-view="aft">Aft</button>
+      </div>
+      <p class="hint">Drag to orbit · scroll or pinch to zoom</p>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var canvas = document.getElementById('c');
+  var renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  } catch (e) {
+    document.getElementById('fail').style.display = 'flex';
+    return;
+  }
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x04060c, 1);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
+  var TARGET = new THREE.Vector3(0, -0.2, 1.0);
+  var VIEWS = {
+    angle: new THREE.Vector3(8.2, 3.6, 9.4),
+    side:  new THREE.Vector3(14, 0.7, 1.0),
+    top:   new THREE.Vector3(0.01, 15, 1.4),
+    aft:   new THREE.Vector3(2.4, 1.8, 14.5)
+  };
+  camera.position.copy(VIEWS.angle);
+
+  var controls = new THREE.OrbitControls(camera, canvas);
+  controls.target.copy(TARGET);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.07;
+  controls.minDistance = 5;
+  controls.maxDistance = 34;
+  controls.autoRotate = !reduceMotion;
+  controls.autoRotateSpeed = 0.7;
+  controls.update();
+
+  /* ---------- lights ---------- */
+  scene.add(new THREE.AmbientLight(0x8fa4c8, 0.45));
+  var key = new THREE.DirectionalLight(0xfff1dd, 2.0); key.position.set(6, 8, 5); scene.add(key);
+  var fill = new THREE.DirectionalLight(0x5f86ff, 0.8); fill.position.set(-7, 2, -6); scene.add(fill);
+  var under = new THREE.DirectionalLight(0x6a5cff, 0.35); under.position.set(0, -6, 2); scene.add(under);
+  var warpLight = new THREE.PointLight(0x5ad6ff, 0, 12, 1.6); warpLight.position.set(0, 0.1, 2.6); scene.add(warpLight);
+
+  /* ---------- hull textures: panel lines and lit windows ---------- */
+  function hullTextures() {
+    var W = 1024, H = 512, i;
+    var cc = document.createElement('canvas'); cc.width = W; cc.height = H;
+    var ce = document.createElement('canvas'); ce.width = W; ce.height = H;
+    var a = cc.getContext('2d'), b = ce.getContext('2d');
+    var g = a.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#a9b3c3'); g.addColorStop(0.5, '#8f9aad'); g.addColorStop(1, '#6d788b');
+    a.fillStyle = g; a.fillRect(0, 0, W, H);
+    b.fillStyle = '#000'; b.fillRect(0, 0, W, H);
+    var seed = 7; function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    for (i = 0; i < 260; i++) {
+      var w = 20 + rnd() * 90, h = 8 + rnd() * 40, x = rnd() * W, y = rnd() * H;
+      a.fillStyle = rnd() > 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(10,16,28,0.10)';
+      a.fillRect(x, y, w, h);
+    }
+    a.strokeStyle = 'rgba(14,20,32,0.5)'; a.lineWidth = 1;
+    for (i = 0; i <= 64; i++) { a.beginPath(); a.moveTo(i * W / 64, 0); a.lineTo(i * W / 64, H); a.stroke(); }
+    [0.1, 0.22, 0.34, 0.5, 0.64, 0.8].forEach(function (v) {
+      a.beginPath(); a.moveTo(0, v * H); a.lineTo(W, v * H); a.stroke();
+    });
+    [0.405, 0.47].forEach(function (v) {
+      for (var x = 0; x < W; x += 12) {
+        var y = v * H;
+        a.fillStyle = '#10182a'; a.fillRect(x + 2, y, 7, 5);
+        if (rnd() > 0.28) { b.fillStyle = rnd() > 0.2 ? '#ffd9a0' : '#bfe6ff'; b.fillRect(x + 2, y, 7, 5); }
+      }
+    });
+    var map = new THREE.CanvasTexture(cc), em = new THREE.CanvasTexture(ce);
+    map.encoding = THREE.sRGBEncoding; em.encoding = THREE.sRGBEncoding;
+    map.wrapS = em.wrapS = THREE.RepeatWrapping;
+    map.anisotropy = em.anisotropy = 4;
+    return { map: map, em: em };
+  }
+  var tx = hullTextures();
+
+  var hullMat = new THREE.MeshStandardMaterial({
+    map: tx.map, emissiveMap: tx.em, emissive: 0xffffff, emissiveIntensity: 1.1, metalness: 0.35, roughness: 0.5
+  });
+  var plainMat = new THREE.MeshStandardMaterial({ color: 0x98a3b5, metalness: 0.4, roughness: 0.45 });
+  var darkMat = new THREE.MeshStandardMaterial({ color: 0x4d586b, metalness: 0.5, roughness: 0.5 });
+
+  var ship = new THREE.Group();
+  scene.add(ship);
+
+  /* primary hull: lathe saucer */
+  var profile = [[0, .28], [.5, .30], [1.2, .26], [1.9, .14], [2.3, .04], [2.35, 0], [2.3, -.06], [1.8, -.14], [1.0, -.18], [.4, -.2], [0, -.2]]
+    .map(function (p) { return new THREE.Vector2(p[0], p[1]); });
+  var saucer = new THREE.Group();
+  saucer.position.set(0, 0.45, -0.6);
+  var saucerMesh = new THREE.Mesh(new THREE.LatheGeometry(profile, 96), hullMat);
+  saucerMesh.scale.set(1, 1, 1.12);
+  saucer.add(saucerMesh);
+  var dome = new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), plainMat);
+  dome.scale.set(1, 0.6, 1); dome.position.y = 0.27; saucer.add(dome);
+  var rim = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.014, 8, 96), new THREE.MeshBasicMaterial({ color: 0x5ad6ff }));
+  rim.rotation.x = Math.PI / 2; rim.position.y = 0.26; rim.scale.set(1, 1.12, 1); saucer.add(rim);
+  ship.add(saucer);
+
+  /* spine and engineering hull */
+  var spine = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 1.5), darkMat);
+  spine.position.set(0, 0.06, 0.55); ship.add(spine);
+
+  var eng = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.46, 3.0, 32).rotateX(Math.PI / 2), plainMat);
+  eng.position.set(0, -0.35, 1.7); ship.add(eng);
+  var engGlow = new THREE.MeshBasicMaterial({ color: 0x5ad6ff });
+  var rearDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.06, 24).rotateX(Math.PI / 2), engGlow);
+  rearDisc.position.set(0, -0.35, 3.2); ship.add(rearDisc);
+  var dishMat = new THREE.MeshStandardMaterial({ color: 0x113a55, emissive: 0x2aa8e0, emissiveIntensity: 1.2, roughness: 0.3 });
+  var dish = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 16), dishMat);
+  dish.scale.set(1, 1, 0.5); dish.position.set(0, -0.38, 0.2); ship.add(dish);
+
+  /* nacelles with warp coils */
+  var coreMat = new THREE.MeshBasicMaterial({ color: 0x5ad6ff });
+  var capMat = new THREE.MeshBasicMaterial({ color: 0x5ad6ff });
+  var shellMat = new THREE.MeshStandardMaterial({ color: 0x9fc4dc, metalness: 0.2, roughness: 0.15, transparent: true, opacity: 0.45 });
+  var coils = [];
+  [-1, 1].forEach(function (s) {
+    var n = new THREE.Group();
+    n.position.set(1.75 * s, 0.2, 2.6);
+    var shell = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 3.6, 28).rotateX(Math.PI / 2), shellMat);
+    var core = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.5, 20).rotateX(Math.PI / 2), coreMat);
+    var front = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 16), capMat);
+    front.scale.set(1, 1, 0.8); front.position.z = -1.8;
+    var rear = new THREE.Mesh(new THREE.SphereGeometry(0.2, 20, 12), darkMat);
+    rear.scale.set(1, 1, 0.55); rear.position.z = 1.8;
+    n.add(shell, core, front, rear);
+    for (var i = 0; i < 7; i++) {
+      var m = new THREE.MeshBasicMaterial({ color: 0x5ad6ff, transparent: true, opacity: 1 });
+      var ring = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.03, 10, 40), m);
+      ring.position.z = -1.4 + i * 0.47;
+      n.add(ring);
+      coils.push({ mat: m, i: i });
+    }
+    ship.add(n);
+    var pylon = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.07, 1.1), darkMat);
+    pylon.position.set(1.02 * s, -0.075, 2.5);
+    pylon.rotation.z = s * 0.363;
+    ship.add(pylon);
+  });
+
+  /* navigation lights */
+  var navRed = new THREE.MeshBasicMaterial({ color: 0xff3b3b });
+  var navGreen = new THREE.MeshBasicMaterial({ color: 0x3bff8a });
+  var strobeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  function nav(mat, x, y, z) { var m = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), mat); m.position.set(x, y, z); ship.add(m); }
+  nav(navRed, -2.3, 0.45, -0.6); nav(navGreen, 2.3, 0.45, -0.6);
+  nav(strobeMat, 0, 0.72, 0.2); nav(strobeMat, 0, -0.85, 1.8);
+
+  /* ---------- warp bubble ---------- */
+  var bubbleUniforms = {
+    uTime: { value: 0 }, uAmt: { value: 0 },
+    uA: { value: new THREE.Color(0x5ad6ff) }, uB: { value: new THREE.Color(0xa58bff) }
+  };
+  var bubble = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 96, 64),
+    new THREE.ShaderMaterial({
+      uniforms: bubbleUniforms, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      vertexShader: [
+        'uniform float uTime; uniform float uAmt;',
+        'varying vec3 vN; varying vec3 vV; varying vec3 vO;',
+        'void main(){',
+        '  vO = position;',
+        '  float w = sin(position.z * 5.0 + uTime * 4.0) * 0.02 * uAmt;',
+        '  vec3 p = position + normal * w;',
+        '  vec4 mv = modelViewMatrix * vec4(p, 1.0);',
+        '  vN = normalize(normalMatrix * normal);',
+        '  vV = normalize(-mv.xyz);',
+        '  gl_Position = projectionMatrix * mv;',
+        '}'
+      ].join('\n'),
+      fragmentShader: [
+        'uniform float uTime; uniform float uAmt; uniform vec3 uA; uniform vec3 uB;',
+        'varying vec3 vN; varying vec3 vV; varying vec3 vO;',
+        'void main(){',
+        '  float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.0);',
+        '  float bands = 0.5 + 0.5 * sin(vO.z * 14.0 - uTime * 6.0);',
+        '  float a = (f * 0.85 + 0.05 + bands * f * 0.35) * uAmt;',
+        '  vec3 c = mix(uA, uB, vO.z * 0.5 + 0.5) * (0.6 + bands * 0.6);',
+        '  gl_FragColor = vec4(c, a);',
+        '}'
+      ].join('\n')
+    })
+  );
+  bubble.position.set(0, 0, 0.8);
+  scene.add(bubble);
+
+  /* ---------- spacetime grid ---------- */
+  var GN = 80, GSIZE = 44, GY = -2.7, CZ = 0.8, R = 4.4, SIG = 1.1, AMP = 1.3;
+  var gCount = (GN + 1) * (GN + 1);
+  var gBaseX = new Float32Array(gCount), gBaseZ = new Float32Array(gCount);
+  var gPos = new Float32Array(gCount * 3), gCol = new Float32Array(gCount * 3), gFade = new Float32Array(gCount);
+  var gi, gj, k = 0;
+  for (gj = 0; gj <= GN; gj++) for (gi = 0; gi <= GN; gi++) {
+    var gx = (gi / GN - 0.5) * GSIZE, gz = (gj / GN - 0.5) * GSIZE + CZ;
+    gBaseX[k] = gx; gBaseZ[k] = gz;
+    var d = Math.hypot(gx, gz - CZ) / (GSIZE * 0.5);
+    gFade[k] = Math.pow(Math.max(0, 1 - d), 1.4);
+    k++;
+  }
+  var gIdx = [];
+  for (gj = 0; gj <= GN; gj++) for (gi = 0; gi <= GN; gi++) {
+    var id0 = gj * (GN + 1) + gi;
+    if (gi < GN) gIdx.push(id0, id0 + 1);
+    if (gj < GN) gIdx.push(id0, id0 + GN + 1);
+  }
+  var gGeo = new THREE.BufferGeometry();
+  gGeo.setAttribute('position', new THREE.BufferAttribute(gPos, 3));
+  gGeo.setAttribute('color', new THREE.BufferAttribute(gCol, 3));
+  gGeo.setIndex(gIdx);
+  var grid = new THREE.LineSegments(gGeo, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+  }));
+  grid.frustumCulled = false;
+  scene.add(grid);
+
+  function updateGrid(amt) {
+    var i, x, xs, r, s, s2, lobe, y, b, mix;
+    for (i = 0; i < gCount; i++) {
+      x = gBaseX[i]; xs = -(gBaseZ[i] - CZ);
+      r = Math.max(Math.hypot(x, xs), 0.001);
+      s = 1 / Math.cosh(SIG * (r - R)); s2 = s * s;
+      lobe = (xs / r) * s2;
+      y = GY - AMP * amt * lobe;
+      gPos[i * 3] = x; gPos[i * 3 + 1] = y; gPos[i * 3 + 2] = gBaseZ[i];
+      b = gFade[i] * (0.28 + 1.5 * Math.abs(lobe) * amt);
+      mix = lobe < 0 ? Math.min(1, -lobe * 1.4) * amt : 0;
+      gCol[i * 3]     = b * (0.35 + 0.27 * mix);
+      gCol[i * 3 + 1] = b * (0.83 - 0.35 * mix);
+      gCol[i * 3 + 2] = b * (1.0);
+    }
+    gGeo.attributes.position.needsUpdate = true;
+    gGeo.attributes.color.needsUpdate = true;
+  }
+
+  /* ---------- starfield ---------- */
+  var SN = 2000, ZMIN = -80, ZMAX = 40;
+  var hx = new Float32Array(SN), hy = new Float32Array(SN), hz = new Float32Array(SN);
+  var sBright = new Float32Array(SN * 3);
+  var pPos = new Float32Array(SN * 3), lPos = new Float32Array(SN * 6), lCol = new Float32Array(SN * 6);
+  var si;
+  for (si = 0; si < SN; si++) {
+    hx[si] = (Math.random() - 0.5) * 70; hy[si] = (Math.random() - 0.5) * 40; hz[si] = ZMIN + Math.random() * (ZMAX - ZMIN);
+    var br = 0.35 + Math.random() * 0.65, tint = Math.random();
+    sBright[si * 3] = br * (0.8 + 0.2 * tint); sBright[si * 3 + 1] = br * (0.88 + 0.1 * tint); sBright[si * 3 + 2] = br;
+    lCol[si * 6] = sBright[si * 3]; lCol[si * 6 + 1] = sBright[si * 3 + 1]; lCol[si * 6 + 2] = sBright[si * 3 + 2];
+  }
+  var pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+  pGeo.setAttribute('color', new THREE.BufferAttribute(sBright, 3));
+  var stars = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, transparent: true, opacity: 0.9 }));
+  stars.frustumCulled = false; scene.add(stars);
+  var lGeo = new THREE.BufferGeometry();
+  lGeo.setAttribute('position', new THREE.BufferAttribute(lPos, 3));
+  lGeo.setAttribute('color', new THREE.BufferAttribute(lCol, 3));
+  var streaks = new THREE.LineSegments(lGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  streaks.frustumCulled = false; scene.add(streaks);
+
+  function updateStars(dt, speed, len) {
+    for (var i = 0; i < SN; i++) {
+      hz[i] += speed * dt;
+      if (hz[i] > ZMAX) { hz[i] -= (ZMAX - ZMIN); hx[i] = (Math.random() - 0.5) * 70; hy[i] = (Math.random() - 0.5) * 40; }
+      pPos[i * 3] = hx[i]; pPos[i * 3 + 1] = hy[i]; pPos[i * 3 + 2] = hz[i];
+      lPos[i * 6] = hx[i]; lPos[i * 6 + 1] = hy[i]; lPos[i * 6 + 2] = hz[i];
+      lPos[i * 6 + 3] = hx[i]; lPos[i * 6 + 4] = hy[i]; lPos[i * 6 + 5] = hz[i] - len;
+    }
+    pGeo.attributes.position.needsUpdate = true;
+    lGeo.attributes.position.needsUpdate = true;
+  }
+
+  /* ---------- UI ---------- */
+  var engaged = false, warpAmt = 0, wf = 6;
+  var btn = document.getElementById('engage'), slider = document.getElementById('wf');
+  var readout = document.getElementById('readout'), statusEl = document.getElementById('status'), dot = document.getElementById('dot');
+  var tBubble = document.getElementById('tBubble'), tGrid = document.getElementById('tGrid'), tOrbit = document.getElementById('tOrbit');
+  var lblA = document.getElementById('lblA'), lblB = document.getElementById('lblB');
+  tOrbit.checked = controls.autoRotate;
+
+  function cFactor(w) { return Math.round(Math.pow(w, 10 / 3)); }
+  function setReadout() { readout.innerHTML = '<b>Warp ' + wf.toFixed(1) + '</b> · ' + cFactor(wf).toLocaleString('en-US') + ' c'; }
+  setReadout();
+  slider.addEventListener('input', function () { wf = parseFloat(slider.value); setReadout(); });
+  btn.addEventListener('click', function () {
+    engaged = !engaged;
+    btn.setAttribute('aria-pressed', engaged ? 'true' : 'false');
+    btn.textContent = engaged ? 'Drop to impulse' : 'Engage warp';
+  });
+  tOrbit.addEventListener('change', function () { controls.autoRotate = tOrbit.checked; });
+  controls.addEventListener('start', function () { controls.autoRotate = false; tOrbit.checked = false; });
+
+  var tween = null;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-view]'), function (b) {
+    b.addEventListener('click', function () {
+      controls.autoRotate = false; tOrbit.checked = false;
+      tween = { from: camera.position.clone(), to: VIEWS[b.getAttribute('data-view')].clone(), t: 0 };
+    });
+  });
+
+  /* ---------- resize ---------- */
+  function resize() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    var narrow = w / h < 0.9;
+    camera.fov = narrow ? 58 : 42;
+    camera.updateProjectionMatrix();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage); else window.addEventListener('resize', resize);
+  resize();
+
+  /* ---------- loop ---------- */
+  var clock = new THREE.Clock(), time = 0, tmp = new THREE.Vector3();
+  function place(el, v, show) {
+    tmp.copy(v).project(camera);
+    if (tmp.z > 1 || !show) { el.style.opacity = 0; return; }
+    el.style.opacity = Math.min(1, warpAmt * 1.4);
+    el.style.left = ((tmp.x * 0.5 + 0.5) * stage.clientWidth) + 'px';
+    el.style.top = ((-tmp.y * 0.5 + 0.5) * stage.clientHeight) + 'px';
+  }
+  var anchorA = new THREE.Vector3(), anchorB = new THREE.Vector3();
+
+  function frame() {
+    requestAnimationFrame(frame);
+    var dt = Math.min(clock.getDelta(), 0.05);
+    time += dt;
+    var target = engaged ? 1 : 0;
+    warpAmt += (target - warpAmt) * (1 - Math.exp(-dt * 2.2));
+    if (Math.abs(target - warpAmt) < 0.001) warpAmt = target;
+
+    var cruise = 8 + 9 * wf;
+    var speed = 0.6 + warpAmt * cruise;
+    updateStars(dt, speed, warpAmt * cruise * 0.05);
+
+    if (tween) {
+      tween.t = Math.min(1, tween.t + dt / 0.9);
+      var e = tween.t < 0.5 ? 2 * tween.t * tween.t : 1 - Math.pow(-2 * tween.t + 2, 2) / 2;
+      camera.position.lerpVectors(tween.from, tween.to, e);
+      if (tween.t >= 1) tween = null;
+    }
+    controls.update();
+
+    ship.position.y = Math.sin(time * 0.8) * 0.04;
+    ship.rotation.z = Math.sin(time * 0.5) * 0.012;
+
+    var pulse = 0.4 + warpAmt * 1.6;
+    coreMat.color.setRGB(0.18 * pulse, 0.6 * pulse, 0.85 * pulse + 0.1);
+    capMat.color.setRGB(0.2 * pulse, 0.7 * pulse, 1.0 * Math.max(pulse, 0.7));
+    engGlow.color.setRGB(0.2 * pulse, 0.65 * pulse, 0.9 * Math.max(pulse, 0.7));
+    coils.forEach(function (c) {
+      var w = warpAmt * (0.5 + 0.5 * Math.sin(time * 6 - c.i * 0.9));
+      c.mat.color.setRGB(0.1 + 0.25 * w, 0.35 + 0.65 * w, 0.55 + 0.45 * w);
+      c.mat.opacity = 0.35 + 0.65 * Math.max(w, 0.25);
+    });
+    dishMat.emissiveIntensity = 0.8 + warpAmt * 1.4;
+    warpLight.intensity = warpAmt * 2.2;
+
+    var blink = (Math.sin(time * 3) > 0.6) ? 1 : 0.15;
+    navRed.color.setRGB(blink, 0.1 * blink, 0.1 * blink);
+    navGreen.color.setRGB(0.1 * blink, blink, 0.5 * blink);
+    var strobe = (Math.sin(time * 5.5) > 0.92) ? 1 : 0.05;
+    strobeMat.color.setRGB(strobe, strobe, strobe);
+
+    var bubOn = tBubble.checked;
+    bubble.visible = bubOn && warpAmt > 0.002;
+    bubbleUniforms.uTime.value = time;
+    bubbleUniforms.uAmt.value = warpAmt;
+    var gs = 0.55 + 0.45 * warpAmt;
+    bubble.scale.set(3.4 * gs, 2.4 * gs, 4.6 * gs);
+
+    var gridOn = tGrid.checked;
+    grid.visible = gridOn;
+    if (gridOn) updateGrid(warpAmt);
+
+    anchorA.set(0, GY - AMP * warpAmt - 0.35, CZ - R);
+    anchorB.set(0, GY + AMP * warpAmt + 0.35, CZ + R);
+    place(lblA, anchorA, gridOn && warpAmt > 0.05);
+    place(lblB, anchorB, gridOn && warpAmt > 0.05);
+
+    if (warpAmt > 0.97) { statusEl.textContent = 'Bubble stable · ' + cFactor(wf).toLocaleString('en-US') + ' c'; dot.className = 'dot on'; }
+    else if (warpAmt > 0.02) { statusEl.textContent = engaged ? 'Bubble forming' : 'Bubble collapsing'; dot.className = 'dot on'; }
+    else { statusEl.textContent = 'Impulse power'; dot.className = 'dot'; }
+
+    renderer.render(scene, camera);
+  }
+  frame();
+})();
+</script>
+
+</body></html>
